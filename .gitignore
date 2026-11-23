@@ -99,6 +99,17 @@ _deps/
 CMakeUserPresets.json
 compile_commands.json
 
+# CUDA (nvcc -keep intermediates)
+*.ptx
+*.cubin
+*.fatbin
+*.fatbin.c
+*.cudafe*
+*.module_id
+
+# Controller binary (built in place, see README)
+robot_controller/controller
+
 # Make / Ninja / Meson / Bazel
 # (generated Makefiles live inside the build dirs ignored below)
 .ninja_deps
