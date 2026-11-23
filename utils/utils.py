@@ -1,5 +1,71 @@
+import math
 import numpy as np
 from matplotlib.path import Path
+from scipy.ndimage import distance_transform_edt
+
+class Utils:
+    @staticmethod
+    def calc_dist(p, q):
+        return math.hypot(p[0] - q[0], p[1] - q[1])
+
+    @staticmethod
+    def check_collision(obstacle_grid, robot_pose, robot_radius):
+        # True when the robot disc overlaps an occupied cell, each cell is the unit square around its index (as drawn on the map)
+        # cells outside the map count as occupied
+        columns, rows = obstacle_grid.shape
+        x, y = robot_pose[0], robot_pose[1]
+
+        # cells whose square the disc can reach
+        xx, yy = np.ogrid[int(np.ceil(x - robot_radius - 0.5)):int(np.floor(x + robot_radius + 0.5)) + 1,
+                          int(np.ceil(y - robot_radius - 0.5)):int(np.floor(y + robot_radius + 0.5)) + 1]
+
+        # distance from the robot centre to the nearest point of each cell square
+        dx = np.maximum(np.abs(xx - x) - 0.5, 0.0)
+        dy = np.maximum(np.abs(yy - y) - 0.5, 0.0)
+        touching = dx ** 2 + dy ** 2 < robot_radius ** 2
+
+        in_map = (xx >= 0) & (xx < columns) & (yy >= 0) & (yy < rows)
+        occupied = ~in_map | obstacle_grid[np.clip(xx, 0, columns - 1), np.clip(yy, 0, rows - 1)]
+
+        return bool(np.any(touching & occupied))
+
+    @staticmethod
+    def check_car_collision(obstacle_grid, robot_pose, footprint):
+        # True when the car's box overlaps an occupied cell, each cell is the unit square around its index (as drawn on the map)
+        # cells outside the map count as occupied
+        # footprint: (front, rear, half width) from the car origin along its heading; the box and a cell square overlap when
+        # no separating axis exists among the map axes and the box's two axes
+        columns, rows = obstacle_grid.shape
+        x, y, theta = robot_pose[0], robot_pose[1], robot_pose[2]
+        front, rear, half_width = footprint
+
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        half_length = 0.5 * (front + rear)
+
+        # box centre, the origin is not in its middle when front != rear
+        center_x = x + 0.5 * (front - rear) * cos_t
+        center_y = y + 0.5 * (front - rear) * sin_t
+
+        # half extents of the box along the map axes, and of a cell square along the box axes
+        extent_x = half_length * abs(cos_t) + half_width * abs(sin_t)
+        extent_y = half_length * abs(sin_t) + half_width * abs(cos_t)
+        square_extent = 0.5 * (abs(cos_t) + abs(sin_t))
+
+        # cells whose square the box's bounding box can reach
+        xx, yy = np.ogrid[int(np.ceil(center_x - extent_x - 0.5)):int(np.floor(center_x + extent_x + 0.5)) + 1,
+                          int(np.ceil(center_y - extent_y - 0.5)):int(np.floor(center_y + extent_y + 0.5)) + 1]
+
+        dx = xx - center_x
+        dy = yy - center_y
+        touching = ((np.abs(dx) < extent_x + 0.5) & (np.abs(dy) < extent_y + 0.5)
+                    & (np.abs(dx * cos_t + dy * sin_t) < half_length + square_extent)
+                    & (np.abs(-dx * sin_t + dy * cos_t) < half_width + square_extent))
+
+        in_map = (xx >= 0) & (xx < columns) & (yy >= 0) & (yy < rows)
+        occupied = ~in_map | obstacle_grid[np.clip(xx, 0, columns - 1), np.clip(yy, 0, rows - 1)]
+
+        return bool(np.any(touching & occupied))
+
 
 class PolygonOps:
     @staticmethod
@@ -385,3 +451,325 @@ class MapCreator:
         goal = (170, 90)
 
         return grid, start, goal
+
+    @staticmethod
+    def get_counterflow_map(shape=(120, 80), corridor_rows=(24, 56)):
+        # Horizontal corridor with a wall above and below it, for the counterflow
+        # pedestrian bottleneck: the robot drives along it while pedestrians walk
+        # the other way, so the only way past them is around them.
+        grid = np.zeros(shape, dtype=bool)
+
+        columns, rows = shape
+
+        first_free_row, last_free_row = corridor_rows
+
+        if not 0 <= first_free_row <= last_free_row < rows:
+            raise ValueError("corridor_rows must be two rows of the map, the lower one first.")
+
+        # Everything outside the free rows is wall; the map border closes the corridor's ends.
+        MapCreator.__add_rect(grid, 0, columns, 0, first_free_row)
+
+        MapCreator.__add_rect(grid, 0, columns, last_free_row + 1, rows)
+
+        return grid
+
+    @staticmethod
+    def stamp_moving_obstacle(static_grid, center_x, center_y, half_size=2):
+        size = 2 * half_size + 1
+
+        x0 = int(round(center_x)) - half_size
+        y0 = int(round(center_y)) - half_size
+        x0 = max(0, min(static_grid.shape[0] - size, x0))
+        y0 = max(0, min(static_grid.shape[1] - size, y0))
+
+        block_mask = np.zeros_like(static_grid)
+        block_mask[x0:x0 + size, y0:y0 + size] = True
+
+        return static_grid | block_mask, block_mask, x0, y0
+
+    @staticmethod
+    def get_u_trap_map(width=100, height=60):
+        # smaller copy of the left U of MapCreator.get_map5, centred in the map: open to the left, the robot starts in front
+        # of it and the goal is behind the back wall
+        # returns the grid, the start and the goal
+        grid = np.zeros((width, height), dtype=bool)
+
+        # Map border.
+        border = 2
+
+        MapCreator.__add_rect(grid, 0, border, 0, height)
+
+        MapCreator.__add_rect(grid, width - border, width, 0, height)
+
+        MapCreator.__add_rect(grid, 0, width, 0, border)
+
+        MapCreator.__add_rect(grid, 0, width, height - border, height)
+
+        # U of the 64 x 64 map (32 cells long, 34 tall, 4-cell walls), centred in the map
+        u_length = 32
+        u_height = 34
+        arm_width = 4
+
+        x_min = (width - u_length) // 2
+        x_max = x_min + u_length
+
+        lower_y_min = (height - u_height) // 2
+        lower_y_max = lower_y_min + arm_width
+
+        upper_y_max = lower_y_min + u_height
+        upper_y_min = upper_y_max - arm_width
+
+        back_wall_width = 4
+
+        # Lower horizontal arm.
+        MapCreator.__add_rect(grid, x_min, x_max, lower_y_min, lower_y_max)
+
+        # Upper horizontal arm.
+        MapCreator.__add_rect(grid, x_min, x_max, upper_y_min, upper_y_max)
+
+        # Right vertical back wall.
+        MapCreator.__add_rect(grid, x_max - back_wall_width, x_max, lower_y_min, upper_y_max)
+
+        # start in front of the opening, goal halfway between the back wall and the right border,
+        # both 2 cells below the U's axis as in the 64 x 64 map
+        y = (lower_y_min + upper_y_max) // 2 - 2
+        start = (5, y)
+        goal = ((x_max + width - border) // 2, y)
+
+        return grid, start, goal
+
+
+
+class MovingObstacles:
+    """Disc-shaped moving obstacles (pedestrians) walking in straight lines between random free points of a static map."""
+
+    def __init__(self, static_grid: np.ndarray, count: int = 10, radius: float = 2.0, speed_range: tuple[float, float] = (1.5, 3.5), keep_out: list[tuple[float, float]] | None = None, keep_out_radius: float = 10.0, yield_to_robot: bool = False, seed: int = 1) -> None:
+        self.static_grid = static_grid
+        self.radius = radius
+        self.yield_to_robot = yield_to_robot
+        self.rng = np.random.default_rng(seed)
+
+        # Cells where a pedestrian fits without touching a static obstacle.
+        self.clearance = distance_transform_edt(~static_grid)
+        self.free_cells = np.argwhere(self.clearance > radius + 1.0).astype(float)
+
+        if len(self.free_cells) == 0:
+            raise ValueError("The map has no free space for the moving obstacles.")
+
+        keep_out = keep_out or []
+        starts: list[np.ndarray] = []
+
+        # Start away from the given points (robot start and goal) and from each other.
+        for _ in range(100000):
+            if len(starts) == count:
+                break
+
+            point = self._random_free_point()
+
+            far_from_keep_out = all(np.hypot(point[0] - x, point[1] - y) > keep_out_radius for x, y in keep_out)
+            far_from_others = all(np.hypot(*(point - other)) > 2.0 * radius + 1.0 for other in starts)
+
+            if far_from_keep_out and far_from_others:
+                starts.append(point)
+        else:
+            raise ValueError("Could not place all moving obstacles, use fewer of them or a smaller keep-out radius.")
+
+        self.positions = np.array(starts).reshape(-1, 2)
+        self.goals = np.array([self._random_free_point() for _ in range(count)]).reshape(-1, 2)
+        self.speeds = self.rng.uniform(speed_range[0], speed_range[1], count)
+        self.velocities = np.zeros((count, 2))
+
+    def _random_free_point(self) -> np.ndarray:
+        return self.free_cells[self.rng.integers(len(self.free_cells))].copy()
+
+    def _fits(self, point: np.ndarray) -> bool:
+        columns, rows = self.static_grid.shape
+
+        x = int(round(point[0]))
+        y = int(round(point[1]))
+
+        if not (0 <= x < columns and 0 <= y < rows):
+            return False
+
+        return self.clearance[x, y] > self.radius + 0.5
+
+    def step(self, dt: float, robot_pose: tuple[float, float, float] | None = None, robot_radius: float = 0.0) -> None:
+        for k in range(len(self.positions)):
+            to_goal = self.goals[k] - self.positions[k]
+            distance = np.hypot(*to_goal)
+            step_length = self.speeds[k] * dt
+
+            # Goal reached: walk to a new random point.
+            if distance <= step_length:
+                self.positions[k] = self.goals[k]
+                self.goals[k] = self._random_free_point()
+                self.velocities[k] = 0.0
+                continue
+
+            next_position = self.positions[k] + to_goal / distance * step_length
+
+            blocked = not self._fits(next_position)
+
+            for j in range(len(self.positions)):
+                if j != k and np.hypot(*(next_position - self.positions[j])) < 2.0 * self.radius:
+                    blocked = True
+
+            # A static obstacle or another pedestrian is in the way: walk somewhere else.
+            if blocked:
+                self.goals[k] = self._random_free_point()
+                self.velocities[k] = 0.0
+                continue
+
+            # A polite pedestrian waits instead of walking into the robot.
+            if self.yield_to_robot and robot_pose is not None:
+                if np.hypot(next_position[0] - robot_pose[0], next_position[1] - robot_pose[1]) < self.radius + robot_radius + 0.5:
+                    self.velocities[k] = 0.0
+                    continue
+
+            self.velocities[k] = (next_position - self.positions[k]) / dt
+            self.positions[k] = next_position
+
+    def grid(self) -> np.ndarray:
+        # Static map with every pedestrian stamped as a filled disc.
+        grid = self.static_grid.copy()
+
+        columns, rows = grid.shape
+        cells = int(np.ceil(self.radius))
+
+        for center_x, center_y in self.positions:
+            x = int(round(center_x))
+            y = int(round(center_y))
+
+            x_start, x_end = max(0, x - cells), min(columns, x + cells + 1)
+            y_start, y_end = max(0, y - cells), min(rows, y + cells + 1)
+
+            xx, yy = np.ogrid[x_start:x_end, y_start:y_end]
+            grid[x_start:x_end, y_start:y_end] |= (xx - center_x) ** 2 + (yy - center_y) ** 2 <= self.radius ** 2
+
+        return grid
+
+    def min_distance(self, robot_pose: tuple[float, float, float]) -> float:
+        # Distance from the robot centre to the nearest pedestrian centre.
+        return float(np.min(np.hypot(self.positions[:, 0] - robot_pose[0], self.positions[:, 1] - robot_pose[1])))
+
+
+class CounterflowPedestrians(MovingObstacles):
+
+    # Coordinate the pedestrians walk along: 0 = x (horizontal lanes), 1 = y (vertical lanes, CrossflowPedestrians).
+    axis = 0
+
+    def __init__(self, static_grid: np.ndarray, positions, velocities, radius: float = 2.0, x_bounds=None) -> None:
+        self._setup(static_grid, positions, velocities, radius, x_bounds)
+
+    def _setup(self, static_grid: np.ndarray, positions, velocities, radius: float, bounds) -> None:
+        # bounds: where each pedestrian turns around on the coordinate it walks along
+        self.static_grid = static_grid
+        self.radius = radius
+        # The pedestrians never react to the robot, so the walk is the same for every controller.
+        self.yield_to_robot = False
+
+        # Clearance to the static obstacles, used by _fits() to keep the pedestrians in the corridor.
+        self.clearance = distance_transform_edt(~static_grid)
+
+        self.positions = np.array(positions, dtype=float).reshape(-1, 2)
+        self.velocities = np.array(velocities, dtype=float).reshape(-1, 2)
+
+        count = len(self.positions)
+
+        if len(self.velocities) != count:
+            raise ValueError("Every pedestrian needs one velocity.")
+
+        # The velocity along the walking axis: its size is the walking speed, its sign the direction the pedestrian walks in.
+        self.speeds = np.abs(self.velocities[:, self.axis])
+        self.directions = np.where(self.velocities[:, self.axis] < 0.0, -1.0, 1.0)
+
+        # The lane each pedestrian walks on (the other coordinate); it never leaves it.
+        self.lanes = self.positions[:, 1 - self.axis].copy()
+
+        # By default a pedestrian turns around only where it would leave the map.
+        if bounds is None:
+            bounds = [(radius, static_grid.shape[self.axis] - 1.0 - radius)] * count
+
+        self.bounds = np.array(bounds, dtype=float).reshape(-1, 2)
+
+        if len(self.bounds) != count:
+            raise ValueError(f"Every pedestrian needs one pair of {'xy'[self.axis]} bounds.")
+
+        # Simulation time walked so far.
+        self.time = 0.0
+
+        self._check_starts()
+
+    def _check_starts(self) -> None:
+        name = "xy"[self.axis]
+
+        for k, (x, y) in enumerate(self.positions):
+            lower, upper = self.bounds[k]
+            along = self.positions[k, self.axis]
+
+            if lower > upper:
+                raise ValueError(f"Pedestrian {k} has {name} bounds [{lower:g}, {upper:g}], the lower one first.")
+
+            if not lower <= along <= upper:
+                raise ValueError(f"Pedestrian {k} starts at {name} = {along:g}, outside its {name} bounds [{lower:g}, {upper:g}].")
+
+            if not self._fits(self.positions[k]):
+                raise ValueError(f"Pedestrian {k} starts at ({x:g}, {y:g}), which is not free space for its radius.")
+
+            for j in range(k):
+                if np.hypot(*(self.positions[k] - self.positions[j])) < 2.0 * self.radius:
+                    raise ValueError(f"Pedestrians {j} and {k} overlap at their starting positions.")
+
+    def step(self, dt: float, robot_pose: tuple[float, float, float] | None = None, robot_radius: float = 0.0) -> None:
+        # robot_pose and robot_radius are taken to keep the MovingObstacles interface, but are never read:
+        # these pedestrians do not react to the robot.
+        self.time += dt
+
+        for k in range(len(self.positions)):
+            # position along the walking axis
+            along = float(self.positions[k, self.axis])
+            direction = float(self.directions[k])
+            remaining = float(self.speeds[k]) * dt
+
+            lower, upper = self.bounds[k]
+
+            # Walk the step in pieces, turning around at a bound rather than stepping over it,
+            # so a long step reverses on the spot instead of jumping outside the bounds.
+            while remaining > 1e-12:
+                bound = upper if direction > 0.0 else lower
+                to_bound = abs(bound - along)
+
+                if remaining < to_bound:
+                    along += direction * remaining
+                    remaining = 0.0
+                else:
+                    along = bound
+                    remaining -= to_bound
+                    direction = -direction
+
+            next_position = np.empty(2)
+            next_position[self.axis] = along
+            next_position[1 - self.axis] = self.lanes[k]
+
+            others = np.delete(self.positions, k, axis=0)
+
+            overlapping = len(others) > 0 and bool(np.any(np.hypot(*(others - next_position).T) < 2.0 * self.radius))
+
+            # Separate lanes and bounds normally keep the pedestrians apart; if a step would still
+            # put one on top of another or into a wall, it turns around where it stands.
+            if overlapping or not self._fits(next_position):
+                direction = -direction
+            else:
+                self.positions[k] = next_position
+
+            self.directions[k] = direction
+            self.velocities[k] = 0.0
+            self.velocities[k, self.axis] = direction * self.speeds[k]
+
+
+class CrossflowPedestrians(CounterflowPedestrians):
+
+    axis = 1
+
+    def __init__(self, static_grid: np.ndarray, positions, velocities, radius: float = 2.0, y_bounds=None) -> None:
+        self._setup(static_grid, positions, velocities, radius, y_bounds)
