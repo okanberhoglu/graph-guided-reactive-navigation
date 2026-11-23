@@ -136,7 +136,10 @@ class MapCreator:
         MapCreator.__add_circle(grid, 100, 28, 8)
         MapCreator.__add_circle(grid, 98, 52, 7)
 
-        return grid
+        start = (20, 10)
+        goal = (20, 70)
+        
+        return grid, start, goal
 
     @staticmethod
     def get_map2(shape=(120, 80)):
@@ -153,7 +156,10 @@ class MapCreator:
         MapCreator.__add_rect(grid, 0, 55, 0, 12)
         MapCreator.__add_rect(grid, 30, 120, 68, 80)
 
-        return grid
+        start = (110, 30)
+        goal = (40, 25)
+                
+        return grid, start, goal
    
     @staticmethod
     def get_map3(shape=(120, 80)):
@@ -176,7 +182,10 @@ class MapCreator:
         MapCreator.__add_rect(grid, 45, 75, 35, 45)
         MapCreator.__add_rect(grid, 85, 120, 30, 40)
 
-        return grid
+        start = (112, 75)
+        goal = (30, 5)
+                        
+        return grid, start, goal
     
     @staticmethod
     def get_map4(shape=(180, 100)):
@@ -252,7 +261,10 @@ class MapCreator:
 
         MapCreator.__add_polygon(grid, lower_barrier)
 
-        return grid
+        start = (40, 50)
+        goal = (140, 50)
+        
+        return grid, start, goal
     
     @staticmethod
     def get_map5(shape=(180, 100)):
@@ -312,138 +324,64 @@ class MapCreator:
         # Lower central barrier.
         MapCreator.__add_rect(grid, central_x_min, central_x_max, 0, 40)
 
-        return grid
+        start = (40, 50)
+        goal = (140, 50)
+
+        return grid, start, goal
 
     @staticmethod
-    def get_map6(shape=(120, 60)):
-        grid = np.zeros(shape, dtype=bool)
-        
-        columns, rows = shape
-
-        border = 1
-        
-        MapCreator.__add_rect(grid, 0, border, 0, rows)
-        MapCreator.__add_rect(grid, columns - border, columns, 0, rows)
-        MapCreator.__add_rect(grid, 0, columns, 0, border)
-        MapCreator.__add_rect(grid, 0, columns, rows - border, rows)
-
-        # ---------------------------------------------------------
-        # Main vertical maze walls
-        # ---------------------------------------------------------
-
-        # Wall 1 - opening at bottom
-        MapCreator.__add_rect(grid, 22, 26, 13, 53)
-
-        # Wall 2 - opening at top
-        MapCreator.__add_rect(grid, 34, 38, 7, 47)
-
-        # Wall 3 - opening at bottom
-        MapCreator.__add_rect(grid, 46, 50, 13, 53)
-
-        # Wall 4 - opening at top
-        MapCreator.__add_rect(grid, 58, 62, 7, 47)
-
-        # Wall 5 - opening at bottom
-        MapCreator.__add_rect(grid, 70, 74, 13, 53)
-
-        # Wall 6 - opening at top
-        MapCreator.__add_rect(grid, 82, 86, 7, 47)
-
-        # Wall 7 - opening at bottom
-        MapCreator.__add_rect(grid, 94, 98, 13, 53)
-
-        # ---------------------------------------------------------
-        # Dead-end branches
-        # ---------------------------------------------------------
-
-        # Branch 1
-        MapCreator.__add_rect(grid, 14, 22, 23, 27)
-
-        # Branch 2
-        MapCreator.__add_rect(grid, 26, 34, 35, 39)
-
-        # Branch 3
-        MapCreator.__add_rect(grid, 38, 46, 19, 23)
-
-        # Branch 4
-        MapCreator.__add_rect(grid, 50, 58, 35, 39)
-
-        # Branch 5
-        MapCreator.__add_rect(grid, 62, 70, 19, 23)
-
-        # Branch 6
-        MapCreator.__add_rect(grid, 74, 82, 35, 39)
-
-        # Branch 7
-        MapCreator.__add_rect(grid, 86, 94, 19, 23)
-
-        # Branch 8
-        MapCreator.__add_rect(grid, 98, 106, 35, 39)
-
-        return grid
-
-    
-    @staticmethod
-    def get_map7(shape=(100, 50)):
-
+    def get_map6(shape=(182, 104)):
         grid = np.zeros(shape, dtype=bool)
 
         columns, rows = shape
 
-        # ---------------------------------------------------------
-        # Outer boundary
-        # ---------------------------------------------------------
-        border = 1
+        cell = 26
+        half_wall = 2
 
-        MapCreator.__add_rect(grid, 0, border, 0, rows)
-        MapCreator.__add_rect(grid, columns - border, columns, 0, rows)
-        MapCreator.__add_rect(grid, 0, columns, 0, border)
-        MapCreator.__add_rect(grid, 0, columns, rows - border, rows)
+        MapCreator.__add_rect(grid, 0, half_wall, 0, rows)
+        MapCreator.__add_rect(grid, columns - half_wall, columns, 0, rows)
+        MapCreator.__add_rect(grid, 0, columns, 0, half_wall)
+        MapCreator.__add_rect(grid, 0, columns, rows - half_wall, rows)
 
-        # ---------------------------------------------------------
-        # Main alternating maze walls
-        #
-        # Each wall almost spans the complete height.
-        # The opening alternates between bottom and top.
-        # ---------------------------------------------------------
+        # Walls between maze cells, in maze cell units:
+        # (x boundary, first row, last row).
+        vertical_walls = [
+            (1, 1, 1),
+            (2, 1, 2),
+            (3, 2, 2),
+            (4, 2, 3),
+            (5, 0, 2),
+            (6, 1, 3),
+        ]
 
-        wall_width = 3
+        # (y boundary, first column, last column).
+        horizontal_walls = [
+            (1, 1, 4),
+            (2, 3, 3),
+            (3, 1, 1),
+        ]
 
-        # Bottom opening
-        MapCreator.__add_rect(grid, 10, 10 + wall_width, 10, 49)
+        # Each wall also covers the posts at both of its ends. Clamp at 0 so a
+        # wall starting at the border does not become a negative (wrapping) index.
+        for x_boundary, first_row, last_row in vertical_walls:
+            MapCreator.__add_rect(
+                grid,
+                x_boundary * cell - half_wall,
+                x_boundary * cell + half_wall,
+                max(first_row * cell - half_wall, 0),
+                (last_row + 1) * cell + half_wall,
+            )
 
-        # Top opening
-        MapCreator.__add_rect(grid, 22, 22 + wall_width, 1, 40)
+        for y_boundary, first_column, last_column in horizontal_walls:
+            MapCreator.__add_rect(
+                grid,
+                max(first_column * cell - half_wall, 0),
+                (last_column + 1) * cell + half_wall,
+                y_boundary * cell - half_wall,
+                y_boundary * cell + half_wall,
+            )
 
-        # Bottom opening
-        MapCreator.__add_rect(grid, 34, 34 + wall_width, 10, 49)
+        start = (13, 13)
+        goal = (170, 90)
 
-        # Top opening
-        MapCreator.__add_rect(grid, 46, 46 + wall_width, 1, 40)
-
-        # Bottom opening
-        MapCreator.__add_rect(grid, 58, 58 + wall_width, 10, 49)
-
-        # Top opening
-        MapCreator.__add_rect(grid, 70, 70 + wall_width, 1, 40)
-
-        # Bottom opening
-        MapCreator.__add_rect(grid, 82, 82 + wall_width, 10, 49)
-
-        # ---------------------------------------------------------
-        # Dead-end side branches
-        # ---------------------------------------------------------
-
-        # Upper dead ends
-        MapCreator.__add_rect(grid, 5, 10, 17, 20)
-        MapCreator.__add_rect(grid, 29, 34, 27, 30)
-        MapCreator.__add_rect(grid, 53, 58, 17, 20)
-        MapCreator.__add_rect(grid, 77, 82, 27, 30)
-
-        # Lower dead ends
-        MapCreator.__add_rect(grid, 17, 22, 31, 34)
-        MapCreator.__add_rect(grid, 41, 46, 17, 20)
-        MapCreator.__add_rect(grid, 65, 70, 31, 34)
-        MapCreator.__add_rect(grid, 89, 95, 17, 20)
-
-        return grid
+        return grid, start, goal

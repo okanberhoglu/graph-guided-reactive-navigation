@@ -27,10 +27,7 @@ def _available_maps():
 MAP_NUMBERS = _available_maps()
 
 def get_global_route(map_number=DEFAULT_MAP, min_node_half_size=RobotConfig.robot_radius):
-    obstacle_grid = get_map(map_number)
-
-    start = (40, 50)
-    goal = (140, 50)
+    obstacle_grid, start, goal = get_map(map_number)
 
     dst_thr = 2.0
 
