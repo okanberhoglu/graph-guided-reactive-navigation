@@ -3,7 +3,13 @@ Graph-guided reactive navigation for nonholonomic ground vehicles using GPU-acce
 
 ## Usage
 
-Run a mode with `main.py`. The mode is optional and defaults to `robot`:
+First, install the dependencies listed in `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+Then run a mode with `main.py`. The mode is optional and defaults to `robot`:
 
 ```bash
 python main.py                  # same as: python main.py robot
