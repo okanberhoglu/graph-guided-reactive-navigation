@@ -213,8 +213,6 @@ def navigate(robot_viz, obstacle_grid, route_planner, nodes, route_nodes, temp_g
                     i = 0
                     print(f"[Py] robot left the route at ({robot_pose[0]:.1f}, {robot_pose[1]:.1f}), new route has {len(route_nodes)} nodes and {len(temp_goals)} temp goals", flush=True)
 
-            robot_viz.update(robot_pose=robot_pose, pause=0.1)
-
             direct_node_ids = route_planner.get_direct_route_to_goal(position=position)
 
             if direct_node_ids is not None:

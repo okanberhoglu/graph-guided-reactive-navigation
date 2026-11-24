@@ -448,7 +448,7 @@ class MapCreator:
             )
 
         start = (13, 13)
-        goal = (170, 90)
+        goal = (162, 90)
 
         return grid, start, goal
 
