@@ -109,6 +109,7 @@ compile_commands.json
 
 # Controller binary (built in place, see README)
 robot_controller/controller
+car_controller/controller
 
 # Make / Ninja / Meson / Bazel
 # (generated Makefiles live inside the build dirs ignored below)

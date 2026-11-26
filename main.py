@@ -18,6 +18,15 @@ MAP_MODES = ("robot", "car")
 
 DEFAULT_MAP = 1
 
+# car mode blows every map cell up into CAR_MAP_SCALE x CAR_MAP_SCALE cells
+CAR_MAP_SCALE = 4
+
+# vector field and kernel drawing sizes on an unscaled map (the UI defaults), in map cells;
+# navigate multiplies them by viz_scale so they keep their size relative to a scaled map
+FIELD_ARROW_LENGTH = 2.5
+KERNEL_ARROW_LENGTH = 3.0
+KERNEL_RESOLUTION = 0.5
+
 
 def _available_maps():
     """Map numbers exposed by MapCreator as get_map<N>()."""
@@ -35,7 +44,7 @@ def get_global_route(map_number=DEFAULT_MAP, min_node_half_size=RobotConfig.robo
     obstacle_grid, start, goal = get_map(map_number)
 
     if is_car:
-        map_scale = 4
+        map_scale = CAR_MAP_SCALE
         obstacle_grid = np.kron(obstacle_grid, np.ones((map_scale, map_scale), dtype=bool))
         start = (map_scale * start[0] + (map_scale - 1) / 2, map_scale * start[1] + (map_scale - 1) / 2)
         goal = (map_scale * goal[0] + (map_scale - 1) / 2, map_scale * goal[1] + (map_scale - 1) / 2)
@@ -182,8 +191,9 @@ def car_controller_step(udp, robot_pose, temp_goal, sensor_radius, free_mask, no
     return u, field, kernels, udp.car_kernel_gamma, controller_edt, temp_goal_reached
 
 
-def navigate(robot_viz, obstacle_grid, route_planner, nodes, route_nodes, temp_goals, goal, robot_pose, sensor_radius, temp_goal_switch_dist, controller_step, motion_step, robot_radius=None, footprint=None, pedestrians=None, dt=0.1):
+def navigate(robot_viz, obstacle_grid, route_planner, nodes, route_nodes, temp_goals, goal, robot_pose, sensor_radius, temp_goal_switch_dist, controller_step, motion_step, robot_radius=None, footprint=None, pedestrians=None, dt=0.1, viz_scale=1.0):
     # pedestrians (robot only): moving obstacles the route does not know about, the robot only sees them through its sensor
+    # viz_scale: how much larger the map is than the original one, the field and kernel arrows are drawn that much longer
     i = 0
 
     path = [(robot_pose[0], robot_pose[1])]
@@ -238,8 +248,8 @@ def navigate(robot_viz, obstacle_grid, route_planner, nodes, route_nodes, temp_g
 
             u, field, kernels, kernel_gamma, controller_edt, temp_goal_reached = controller_step(udp, robot_pose, temp_goal, sensor_radius, free_mask, nodes_to_send, robot_viz, is_final)
 
-            robot_viz.update_vector_field(field[:, :2], field[:, 2:])
-            robot_viz.update_kernels(kernels[:, :2], kernels[:, 2:], gamma=kernel_gamma)
+            robot_viz.update_vector_field(field[:, :2], field[:, 2:], arrow_length=FIELD_ARROW_LENGTH * viz_scale)
+            robot_viz.update_kernels(kernels[:, :2], kernels[:, 2:], gamma=kernel_gamma, arrow_length=KERNEL_ARROW_LENGTH * viz_scale, resolution=KERNEL_RESOLUTION * viz_scale)
 
             robot_pose = motion_step(robot_pose, u, dt)
             path.append((robot_pose[0], robot_pose[1]))
@@ -319,7 +329,10 @@ def run_car(map_number=DEFAULT_MAP):
     waypoints, route_nodes, nodes, obstacle_grid, start, goal, route_planner = get_global_route(map_number=map_number, min_node_half_size=min_node_half_size, dst_thr=dst_thr, is_car=True)
 
     footprint = (CarConfig.car_front, CarConfig.car_rear, CarConfig.car_half_width)
-    robot_pose = [start[0], start[1], 0.0, 0.0]
+    if map_number == 3:
+        robot_pose = [start[0], start[1], 3.14, 0.0]
+    else:
+        robot_pose = [start[0], start[1], 0.0, 0.0]
     sensor_radius = CarConfig.sensor_radius
     fig, ax, robot_viz = Visualizer.visualize_graph(obstacle_grid=obstacle_grid, nodes=route_nodes, temp_goals=waypoints, goal=goal, start=start, robot_pose=robot_pose, robot_radius=None, sensor_radius=sensor_radius, block=False, save_global_map=False, save_local_map=False, save_edt_map=False, footprint=footprint)
 
@@ -337,6 +350,7 @@ def run_car(map_number=DEFAULT_MAP):
         controller_step=car_controller_step,
         motion_step=ackerman_dd_step,
         footprint=footprint,
+        viz_scale=CAR_MAP_SCALE,
     )
 
 
