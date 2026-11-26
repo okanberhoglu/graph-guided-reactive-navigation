@@ -1,4 +1,4 @@
-from global_planner.rect_region import RectRegion, GridCell
+from global_motion_planner.rect_region import RectRegion, GridCell
 import math
 import heapq
 
@@ -68,6 +68,11 @@ class DijkstraRoutePlanner:
             return t_low, t_high
         
     def _segment_cover(self, p: tuple[float, float], q: tuple[float, float]) -> list[int] | None:
+            # Ordered node ids that together cover the segment p -> q, or None
+            # if some part of it is outside every node. Greedy: always take the
+            # node that carries the segment furthest, so the cover has the
+            # fewest nodes. Every node is obstacle free, so any node may be
+            # used, not only the ones on the route.
             intervals = []
 
             for node_id, node in enumerate(self.nodes):
@@ -104,7 +109,8 @@ class DijkstraRoutePlanner:
             waypoints.extend(self.get_temp_goal_points())
 
             pruned: list[tuple[float, float]] = []
-    
+            # Nodes the pruned path runs through, in driving order. A shortcut
+            # can pass through nodes that are not on the Dijkstra route.
             pruned_route: list[int] = []
             current_index = 0
 
@@ -116,6 +122,8 @@ class DijkstraRoutePlanner:
                     next_index -= 1
                     cover = self._segment_cover(waypoints[current_index], waypoints[next_index])
 
+                # Neighbouring waypoints both lie in route node current_index;
+                # this only matters if rounding a centroid moved it outside.
                 if cover is None:
                     cover = [self.route_node_ids[current_index]]
 
@@ -208,6 +216,11 @@ class DijkstraRoutePlanner:
 
             goal_set = set(self.goal_node_id_list)
 
+            # The start point can sit in several overlapping nodes. Take the
+            # one with the cheapest route to the goal and, among equal ones,
+            # the largest, since a bigger region leaves the MPC more room
+            # (thesis Sec. 3.3: the CurrentNode ensuring the minimum cost
+            # route according to eq. 3.4).
             current_node_id = min(self.start_node_id_list, key=lambda node_id: (self.cost_to_goal[node_id], -self.nodes[node_id].area))
 
             if not math.isfinite(self.cost_to_goal[current_node_id]):
@@ -215,6 +228,9 @@ class DijkstraRoutePlanner:
 
             self.route_node_ids.append(current_node_id)
 
+            # Walking Po from the start node is exactly Po.Next chained
+            # until the goal node, and it terminates because the cost to
+            # the goal strictly decreases at every hop.
             while current_node_id not in goal_set:
                 current_node_id = self.policy[current_node_id]
 
@@ -230,6 +246,8 @@ class DijkstraRoutePlanner:
 
             goal_set = set(self.goal_node_id_list)
 
+            # Same choice as in find_route: the cheapest node to the goal,
+            # and the largest one among equal costs.
             current_node_id = min(containing_node_ids, key=lambda node_id: (self.cost_to_goal[node_id], -self.nodes[node_id].area))
 
             if not math.isfinite(self.cost_to_goal[current_node_id]):
@@ -242,9 +260,10 @@ class DijkstraRoutePlanner:
 
                 route_node_ids.append(current_node_id)
 
+            # The robot position becomes the start point, which the pruned
+            # temp goals start from.
             self.start_point = position
             self.start_node_id_list = containing_node_ids
             self.route_node_ids = route_node_ids
 
             return self.route_node_ids
-

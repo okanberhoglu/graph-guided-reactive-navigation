@@ -1,8 +1,9 @@
 import math
 import numpy as np
 from scipy import ndimage
-from global_planner.rect_region import RectRegion, GridCell
+from global_motion_planner.rect_region import RectRegion, GridCell
 
+# MPC-GRAPH algorithm graph generation
 class RectNodeGraphGenerator:
     def __init__(self, obstacle_grid: np.ndarray, alpha: float = 0.99, p_confidence: float = 0.90, gamma: float = 1.05, max_nodes: int = 1000, edge_cost_weight: float = 1.0, dst_thr: float = 0.0, random_seed: int = 20, robot_radius: float = 2.0):
         self.obstacles = obstacle_grid.astype(bool)

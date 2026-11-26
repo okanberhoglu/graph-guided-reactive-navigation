@@ -9,6 +9,8 @@ struct ControllerParams
 
     double betaRatio = 50.0;
 
+    double goalTolerance = 2.0;
+
     double vMin = -2.0;
     double vMax = 8.0;
     double omegaMin = -4.0;

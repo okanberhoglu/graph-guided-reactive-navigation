@@ -1,11 +1,36 @@
 # ---------------------------------------------------------------------------
+# ROS 2 / colcon
+# ---------------------------------------------------------------------------
+# colcon output, in case it is ever run from inside this repo
+# instead of the workspace root
+build/
+install/
+log/
+
+# Do NOT ignore these, they are meaningful to ROS tooling:
+#   <pkg>/resource/<pkg>   (ament_python index marker)
+#   COLCON_IGNORE / AMENT_IGNORE
+
+# rosbag (ROS 1 and ROS 2)
+*.bag
+*.bag.active
+*.db3
+*.db3-shm
+*.db3-wal
+*.mcap
+rosbag2_*/
+
+# Qt Creator (common ROS IDE)
+CMakeLists.txt.user*
+*.autosave
+qtcreator-*
+
+# ---------------------------------------------------------------------------
 # Python
 # ---------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
-*.pyo
-*.pyd
 
 # Virtual environments
 venv/
@@ -14,8 +39,7 @@ env/
 ENV/
 .python-version
 
-# Packaging / distribution
-build/
+# Packaging (ament_python with --symlink-install writes *.egg-info into src)
 dist/
 sdist/
 wheels/
@@ -47,7 +71,7 @@ dmypy.json
 .ipynb_checkpoints/
 
 # ---------------------------------------------------------------------------
-# C / C++
+# C / C++ / CUDA
 # ---------------------------------------------------------------------------
 # Object and intermediate files
 *.o
@@ -87,7 +111,7 @@ dmypy.json
 core
 core.*
 
-# CMake
+# CMake (normally inside build/, but catches in-source builds)
 CMakeFiles/
 CMakeCache.txt
 CMakeScripts/
@@ -98,6 +122,7 @@ Testing/
 _deps/
 CMakeUserPresets.json
 compile_commands.json
+cmake-build-*/
 
 # CUDA (nvcc -keep intermediates)
 *.ptx
@@ -107,24 +132,11 @@ compile_commands.json
 *.cudafe*
 *.module_id
 
-# Controller binary (built in place, see README)
-robot_controller/controller
-car_controller/controller
-
-# Make / Ninja / Meson / Bazel
-# (generated Makefiles live inside the build dirs ignored below)
+# Ninja / Bazel
 .ninja_deps
 .ninja_log
 build.ninja
-builddir/
 bazel-*
-
-# Build output directories
-build*/
-cmake-build-*/
-out/
-/bin/
-/obj/
 
 # ---------------------------------------------------------------------------
 # Editors and IDEs
@@ -173,8 +185,6 @@ checkpoints/
 *.onnx
 *.npy
 *.npz
-*.bag
-*.db3
 
 # Secrets / local config
 .env
