@@ -47,8 +47,8 @@ class MotionPlannerNode(Node):
             self.goal_distance_threshold = 4.0
         else:
             self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
-            self.distance_threshold = 0.2
-            self.min_rect_half_size = 0.2
+            self.distance_threshold = 0.1
+            self.min_rect_half_size = 0.1
             self.goal_distance_threshold = 0.5
         
         self.goal_sub = self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
@@ -559,7 +559,8 @@ def main(args=None):
         node.get_logger().info("Shutting down motion planner...")
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

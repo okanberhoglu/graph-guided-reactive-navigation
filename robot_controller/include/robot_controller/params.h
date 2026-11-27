@@ -9,23 +9,23 @@ struct ControllerParams
 
     double betaRatio = 50.0;
 
-    double goalTolerance = 2.0;
+    double goalTolerance = 1.0;
 
-    double vMin = -2.0;
-    double vMax = 8.0;
-    double omegaMin = -4.0;
-    double omegaMax = 4.0;
+    double vMin = -1.0;
+    double vMax = 2.2;
+    double omegaMin = -2.0;
+    double omegaMax = 2.0;
 
-    double robotRadius = 2.0;
+    double robotRadius = 1.2;
 
-    double lookAhead = 1.5;
+    double lookAhead = 1.0;
 
-    double nominalSpeed = 8.0;
+    double nominalSpeed = 2.0;
     double attractorRadius = 2.0;
     double speedNormRatio = 0.5;
 
     double dSafe = 0.5;
-    double dActive = 4.0;
+    double dActive = 2.0;
     double lambdaTauMax = 2.0;
     double modSteepness = 3.0;
     double tailSteepness = 100.0;

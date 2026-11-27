@@ -12,6 +12,7 @@ The repository is a set of ROS 2 packages. A global planner covers the free spac
 | `messages` | ament_cmake | Custom messages: `RectRegion`, `RectRegionArray`, `EdtWindow` |
 | `robot_controller` | ament_cmake | `controller_node`: GPU sampling-based MPC for a differential-drive robot (CUDA) |
 | `car_controller` | ament_cmake | `controller_node`: GPU sampling-based MPC for a car-like (Ackermann) vehicle, tuned for the CARLA Lincoln MKZ (CUDA) |
+| `graph_guided_nav_bringup` | ament_cmake | Launch files and RViz configs for the robot and the CARLA car |
 
 
 ## Requirements
@@ -24,25 +25,94 @@ The repository is a set of ROS 2 packages. A global planner covers the free spac
 
 ## Build
 
-```bash
-mkdir -p ~/graph_guided_nav_ws/src
-cd ~/graph_guided_nav_ws/src
-git clone https://github.com/okanberhoglu/graph-guided-reactive-navigation.git
+1. Create a workspace with a `src` folder:
 
-cd ~/graph_guided_nav_ws
-source /opt/ros/humble/setup.bash
-rosdep install --from-paths src --ignore-src -y
-colcon build --symlink-install
-source install/setup.bash
-```
+   ```bash
+   mkdir -p ~/graph_guided_nav_ws/src
+   ```
 
-`rosdep install` pulls in the ROS and Python dependencies declared in each `package.xml`. If `rosdep` is not set up yet, run `sudo apt install python3-rosdep && sudo rosdep init && rosdep update` once.
+2. Clone the `ros2-humble` branch into `src`. The default branch, `main`, holds the earlier stand-alone Python version without the ROS 2 packages, so the `-b ros2-humble` is needed:
 
-Run `colcon build` from the workspace root, not from inside the repository.
+   ```bash
+   cd ~/graph_guided_nav_ws/src
+   git clone -b ros2-humble https://github.com/okanberhoglu/graph-guided-reactive-navigation.git
+   ```
+
+3. Install the dependencies declared in each `package.xml`:
+
+   ```bash
+   cd ~/graph_guided_nav_ws
+   source /opt/ros/humble/setup.bash
+   rosdep install --from-paths src --ignore-src -y
+   ```
+
+   If `rosdep` is not set up yet, run `sudo apt install python3-rosdep && sudo rosdep init && rosdep update` once.
+
+4. Build from the workspace root, not from inside the repository:
+
+   ```bash
+   colcon build --symlink-install
+   ```
+
+5. Source the workspace. Do this in every new terminal before running the nodes or launch files:
+
+   ```bash
+   source ~/graph_guided_nav_ws/install/setup.bash
+   ```
 
 ## Run
 
-Start the nodes for your vehicle, each in its own terminal, after sourcing `install/setup.bash`. Run only one controller at a time: both use the node name `reactive_controller`.
+### With the launch files
+
+`graph_guided_nav_bringup` starts the map creator, the planner, the matching controller and RViz with one command. Source `install/setup.bash` first.
+
+Differential-drive robot:
+
+```bash
+ros2 launch graph_guided_nav_bringup robot.launch.py
+```
+
+CARLA car:
+
+```bash
+ros2 launch graph_guided_nav_bringup car.launch.py
+```
+
+| Launch file | `is_car` | Controller | RViz config |
+|---|---|---|---|
+| `robot.launch.py` | `false` | `robot_controller` | `rviz/robot.rviz` |
+| `car.launch.py` | `true` | `car_controller` | `rviz/car.rviz` |
+
+Both launch files take the same arguments:
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `use_sim_time` | `false` | Run every node and RViz on `/clock` instead of wall time. Set it to `true` only when a simulator publishes `/clock`: Gazebo does, the CARLA ROS 2 bridge used here does not. With `true` and no `/clock`, the nodes never tick and `/local_map` stays empty. |
+| `rviz` | `true` | Start RViz |
+
+```bash
+ros2 launch graph_guided_nav_bringup robot.launch.py use_sim_time:=true   # robot in Gazebo
+ros2 launch graph_guided_nav_bringup car.launch.py rviz:=false            # car without RViz
+```
+
+The launch files start only this repository's nodes. The map on `/map`, the laser scan, the odometry and the TF tree have to come from elsewhere; see [What the nodes wait for](#what-the-nodes-wait-for). For example, a TurtleBot3 Burger in Gazebo with Cartographer providing the map:
+
+```bash
+export TURTLEBOT3_MODEL=burger
+ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
+ros2 launch turtlebot3_cartographer cartographer.launch.py use_sim_time:=True
+ros2 launch graph_guided_nav_bringup robot.launch.py use_sim_time:=true
+```
+
+The planner builds its region graph once, from the first map it receives, so finish mapping before starting the launch file, or restart it once the map is complete.
+
+For the car, start CARLA and the CARLA ROS 2 bridge first, then `car.launch.py`.
+
+**RViz.** Both configs show the global map (drawn behind everything), the local map, the temporary goal, the final goal, the laser scan, the odometry and TF. The car config also shows the ego bounding box (`/carla/ego/bounding_box`) and the CARLA path (`/carla/ego/path`). The view is a 3D orbit camera that follows `base_link`; switch to the top-down view under *Saved* in the Views panel. The **2D Goal Pose** tool sends the goal to the planner on `/goal_pose`. With `--symlink-install`, *File → Save Config* writes your changes back to the package's `.rviz` file.
+
+### Node by node
+
+To run the nodes without the launch files, start each in its own terminal after sourcing `install/setup.bash`. Run only one controller at a time: both use the node name `reactive_controller`.
 
 Differential-drive robot:
 
@@ -59,6 +129,10 @@ ros2 run local_map_creator map_creator_node --ros-args -p is_car:=true
 ros2 run global_motion_planner motion_planner_node --ros-args -p is_car:=true
 ros2 run car_controller controller_node
 ```
+
+Add `--ros-args -p use_sim_time:=true` to each node when the simulator publishes `/clock`.
+
+### What the nodes wait for
 
 All nodes start idle and wait for their inputs. The topic names below are the robot defaults; see [Car mode](#car-mode-is_car) for the car ones.
 
@@ -90,6 +164,8 @@ Each controller stops once it is within `goalTolerance` (`params.h`) of its goal
 
 The robot controller ticks on wall time. The car controller ticks on the node clock, so with `use_sim_time:=true` it follows the simulator's `/clock` and does nothing until `/clock` is published.
 
+### Sending a goal
+
 Send the goal with the **2D Goal Pose** tool in RViz 2, or from the command line. The planner reads the goal position as `map` coordinates and ignores the orientation:
 
 ```bash
@@ -101,15 +177,16 @@ The planner shows the occupancy grid with the graph, route and temporary goals i
 
 ### Car mode (`is_car`)
 
-`map_creator_node` and `motion_planner_node` both take a boolean `is_car` parameter, `false` by default. Set it to `true` on both to run with the CARLA car, as in the car commands above. The parameter is read once at startup, so restart the node to change it.
+`map_creator_node` and `motion_planner_node` both take a boolean `is_car` parameter, `false` by default. `car.launch.py` sets it to `true` on both; when running node by node, pass it as in the car commands above. The parameter is read once at startup, so restart the node to change it.
 
 | | Robot (`is_car:=false`, default) | Car (`is_car:=true`) |
 |---|---|---|
 | Laser scan | `/scan` | `/carla/ego/scan` |
 | Odometry | `/odom` | `/carla/ego/odometry` |
 | Local map (`/local_map`) | 8 m × 8 m | 20 m × 20 m |
-| Minimum region clearance | 0.2 m | 0.5 m |
-| Waypoint reach radius | 0.5 m | 4.0 m |
+| Region distance from obstacles (`distance_threshold`) | 0.1 m | 1.0 m |
+| Extra clearance a new region needs (`min_rect_half_size`) | 0.1 m | 0.5 m |
+| Waypoint reach radius (`goal_distance_threshold`) | 0.5 m | 4.0 m |
 
 The controllers have no `is_car` parameter; choose the package instead: `robot_controller` with `is_car:=false`, `car_controller` with `is_car:=true`.
 

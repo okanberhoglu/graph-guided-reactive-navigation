@@ -146,7 +146,11 @@ class Visualizer:
         if robot_pose is not None:
             fig, (ax, ax_local) = plt.subplots(1, 2, figsize=(14, 8), gridspec_kw={"width_ratios": [2.4, 1.0]})
         else:
-            fig, ax = plt.subplots(figsize=(14, 8))
+            # width follows the map's shape so a tall map is not framed by wide empty margins;
+            # about 0.9 in of each side goes to the title, tick labels and axis labels
+            height = 8.0
+            width = min(max((height - 0.9) * columns / rows + 0.9, 5.0), 14.0)
+            fig, ax = plt.subplots(figsize=(width, height))
             ax_local = None
 
         ax.imshow(
