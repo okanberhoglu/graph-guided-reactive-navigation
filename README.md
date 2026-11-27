@@ -73,3 +73,7 @@ python main.py car --map 4      # terminal 2
 The controller shuts down when the car reaches the goal or hits an obstacle.
 
 The robot and car controllers use the same UDP port (`5001`), so run only one of them at a time.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
